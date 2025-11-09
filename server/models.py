@@ -18,7 +18,8 @@ class Technician(BaseModel):
 
 # Server model
 class Server(BaseModel):
-    id: str = Field(description="Unique server identifier")
+    id: str = Field(
+        description="Unique server identifier (Hall-Pod-Aisle-Rack-U#)")
     name: str = Field(description="Server name")
     location: Location = Field(description="Location of the server")
 
@@ -39,6 +40,9 @@ class JiraTicket(BaseModel):
     project: Optional[str] = None
     issue_type: Optional[str] = None
     labels: List[str] = []
+    server_id: Optional[str] = Field(
+        None, description="Server rack ID extracted from ticket (format: Hall-Pod-Aisle-Rack-U#)"
+    )
 
 
 class JiraTicketListResponse(BaseModel):

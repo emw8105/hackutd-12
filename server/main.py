@@ -107,6 +107,63 @@ def get_ticket(ticket_key: str):
             status_code=404, detail=f"Ticket not found: {str(e)}")
 
 
+@app.get("/items/by-server/{server_id}")
+def get_tickets_by_server(server_id: str):
+    """Get all Jira tickets associated with a specific server ID."""
+    try:
+        client = get_jira_client()
+        tickets_data = client.get_tickets_by_server_id(server_id)
+        tickets = [JiraTicket(**ticket) for ticket in tickets_data]
+        return {
+            "tickets": tickets,
+            "count": len(tickets),
+            "server_id": server_id,
+            "message": f"Successfully retrieved tickets for server {server_id}"
+        }
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get tickets for server: {str(e)}")
+
+
+@app.get("/items/{ticket_key}/server")
+def get_server_from_ticket(ticket_key: str):
+    """Get the server associated with a specific ticket."""
+    try:
+        jira_client = get_jira_client()
+        ticket = jira_client.get_ticket_by_key(ticket_key)
+
+        server_id = ticket.get('server_id')
+        if not server_id:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Ticket {ticket_key} does not have an associated server ID"
+            )
+
+        server_store = get_server_store()
+        server = server_store.get_server(server_id)
+
+        if not server:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Server {server_id} not found in server store"
+            )
+
+        return {
+            "ticket_key": ticket_key,
+            "server": server,
+            "message": f"Successfully retrieved server for ticket {ticket_key}"
+        }
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get server from ticket: {str(e)}")
+
+
 @app.put("/items/{ticket_key}/status")
 def update_ticket_status(ticket_key: str, status_update: JiraStatusUpdate):
     """Update the status of a Jira ticket."""
