@@ -541,7 +541,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 store = get_technician_store()
                 tech_id = event.payload.id
                 if store.get_technician(tech_id) is not None:
-                    return
+                    logging.info("Technician already exists, skipping add:", tech_id)
+                    continue
                 store.add_technician(
                     Technician(id=tech_id, location=event.payload.location)
                 )
@@ -554,7 +555,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     response = TechnicianResponse(event_type="assignment",
                                                   payload = assignments[tech_id])
                     await websocket.send_json(response.dict())
-                    logger.info("Sending back assignment: ", response)
         except Exception as e:
             logger.info("Invalid JSON received, ignoring.", data, e)
         continue
