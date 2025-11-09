@@ -137,12 +137,12 @@ public class GestureToggle : MonoBehaviour
         float pinkyStrength = hand.GetFingerPinchStrength(OVRHand.HandFinger.Pinky);
 
         // Index and middle should be extended (low pinch strength)
-        bool indexExtended = indexStrength < 0.5f;
-        bool middleExtended = middleStrength < 0.5f;
+        bool indexExtended = indexStrength < 0.6f;
+        bool middleExtended = middleStrength < 0.6f;
 
         // Ring and pinky should be curled (high pinch strength)
-        bool ringCurled = ringStrength > 0.5f;
-        bool pinkyCurled = pinkyStrength > 0.5f;
+        bool ringCurled = ringStrength > 0.4f;
+        bool pinkyCurled = pinkyStrength > 0.4f;
 
         bool gestureDetected = indexExtended && middleExtended && ringCurled && pinkyCurled;
 
