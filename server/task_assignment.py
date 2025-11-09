@@ -34,22 +34,32 @@ class TaskAssigner:
         self,
         technicians: list[str] = [],
         tasks: list[models.JiraTicket] = [],
-        distances: list[int] = [],
+        distances: list[list[int]] = [],
         priority_weight: float = config.TASK_PRIORITY_WEIGHT,
     ):
         self.priority_weight = priority_weight
         self.graph: "Graph" | None = None
         self.technicians: list[str] = technicians
-        self.distances: list[int] = distances
+        self.distances: list[list[int]] = distances
         self.tasks: list[models.JiraTicket] = tasks
         self.assignments = {}
         self.lock = threading.Lock()
         logger.info("Initialized TaskAssigner")
 
-    def add_technician(self, technician: str, distance: int) -> None:
+    def update_floor(
+        self,
+        technicians: list[str],
+        distances: list[list[int]],
+    ) -> None:
+        with self.lock:
+            self.technicians = technicians
+            self.distances = distances
+            self._rebuild_graph_unsafe()
+
+    def add_technician(self, technician: str, distances: list[int]) -> None:
         with self.lock:
             self.technicians.append(technician)
-            self.distances.append(distance)
+            self.distances.append(distances)
             self._rebuild_graph_unsafe()
 
     def _CONSTANT_PRIORITIES(self, num_tasks: int) -> np.ndarray:
@@ -65,7 +75,7 @@ class TaskAssigner:
                 priority_weight=config.TASK_PRIORITY_WEIGHT,
             )
 
-    def set_distances(self, distances: np.ndarray) -> None:
+    def set_distances(self, distances: list[list[int]]) -> None:
         with self.lock:
             self.distances = distances
             self._rebuild_graph_unsafe()
@@ -155,7 +165,9 @@ class Graph:
         Create and return a min cost flow graph for assigning technicians to tasks
         """
 
-        costs = distances - priority_weight * task_priorities
+        costs = (distances - priority_weight * task_priorities).astype(int)
+        # Convert all costs to int for OR-Tools
+        costs = costs.astype(int)
         # OR-Tools requires costs to be non-negative.
         min_cost = np.min(costs)
         cost_offset = 0 if min_cost >= 0 else abs(min_cost)
@@ -223,43 +235,3 @@ class Graph:
 
 
 task_assigner: TaskAssigner = TaskAssigner(priority_weight=config.TASK_PRIORITY_WEIGHT)
-
-# tickets = [
-#     models.JiraTicket(
-#         key="KAN-2",
-#         id="10033",
-#         summary="PLS HELP",
-#         description="[1-01-2-04]",
-#         status="To Do",
-#         status_id="10000",
-#         priority="Medium",
-#         assignee=None,
-#         reporter="Ruben Olano",
-#         created="2025-11-08T20:41:10.471-0600",
-#         updated="2025-11-08T22:30:06.368-0600",
-#         project="KAN",
-#         issue_type="Task",
-#         labels=[],
-#         server_id="1-01-2-04",
-#     ),
-#     models.JiraTicket(
-#         key="KAN-1",
-#         id="10000",
-#         summary="MVP",
-#         description="[1-01-2-03]",
-#         status="In Progress",
-#         status_id="10001",
-#         priority="Medium",
-#         assignee=None,
-#         reporter="Ruben Olano",
-#         created="2025-11-08T16:48:23.241-0600",
-#         updated="2025-11-08T22:29:45.515-0600",
-#         project="KAN",
-#         issue_type="Task",
-#         labels=[],
-#         server_id="1-01-2-03",
-#     ),
-# ]
-# task_assigner.refresh_tasks(tickets)
-# task_assigner.add_technician("tech_1", 10)
-# print(task_assigner.assign_tasks())

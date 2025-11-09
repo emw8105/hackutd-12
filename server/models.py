@@ -1,5 +1,14 @@
+from __future__ import annotations
+
 from pydantic import BaseModel, Field
 from typing import Optional, List, Literal
+
+
+class FloorUpdate(BaseModel):
+    technicians: List[Technician]
+    rack_ids: List[str]
+    rack_locations: List[Location]
+    distances: List[List[float]]
 
 
 # Location model for technician coordinates
@@ -61,3 +70,8 @@ class JiraComment(BaseModel):
 class TechnicianEvents(BaseModel):
     event_type: Literal["online"]
     payload: Optional[Technician] = None
+
+
+class TechnicianResponse(BaseModel):
+    event_type: Literal["assignment"]
+    payload: JiraTicket
