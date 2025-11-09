@@ -14,6 +14,12 @@ public class GestureToggle : MonoBehaviour
     [Tooltip("Target object for the peace sign gesture (right hand)")]
     public GameObject peaceSignTarget;
 
+    [Header("QR Code Scanning")]
+    [Tooltip("Simple QR Code scanner component (uses keyboard for testing)")]
+    public SimpleQRScanner simpleQrScanner;
+    [Tooltip("Enable QR scanning when peace sign modal opens")]
+    public bool enableQRScanOnPeaceSign = true;
+
     [Header("Gesture Settings")]
     [Tooltip("How long the gesture must be held before triggering (in seconds)")]
     public float gestureHoldTime = 0.1f;
@@ -30,6 +36,16 @@ public class GestureToggle : MonoBehaviour
     private float peaceGestureHoldTimer = 0f;
     private float rockCooldownTimer = 0f;
     private float peaceCooldownTimer = 0f;
+    private string currentScannedServerId = null;
+
+    void Start()
+    {
+        // Subscribe to QR code scan events
+        if (simpleQrScanner != null)
+        {
+            simpleQrScanner.OnQRCodeScanned.AddListener(OnQRCodeDetected);
+        }
+    }
 
     void Update()
     {
@@ -164,12 +180,140 @@ public class GestureToggle : MonoBehaviour
             peaceSignTarget.SetActive(peaceTargetVisible);
             Debug.Log($"[GestureToggle] Peace sign target toggled {(peaceTargetVisible ? "ON" : "OFF")}");
 
-            // If toggling ON, fetch different data from server
+            // If toggling ON, start QR scanning
             if (peaceTargetVisible)
             {
-                FetchAndDisplayServers();
+                if (enableQRScanOnPeaceSign && simpleQrScanner != null)
+                {
+                    Debug.Log("[GestureToggle] Starting QR scanner for server detection...");
+                    simpleQrScanner.StartScanning();
+                }
+                else
+                {
+                    // Fallback: Show all servers if QR scanner not available
+                    FetchAndDisplayServers();
+                }
+            }
+            else
+            {
+                // Stop scanning when modal closes
+                if (simpleQrScanner != null && simpleQrScanner.IsScanning())
+                {
+                    simpleQrScanner.StopScanning();
+                }
             }
         }
+    }
+
+    /// <summary>
+    /// Called when a QR code is detected by the scanner
+    /// </summary>
+    private void OnQRCodeDetected(string qrData)
+    {
+        Debug.Log($"[GestureToggle] QR Code scanned: {qrData}");
+
+        // Assume QR code contains the server ID (e.g., "rack-a-001")
+        // You can also use JSON format like: {"type":"server","id":"rack-a-001"}
+
+        string serverId = ParseServerIdFromQR(qrData);
+
+        if (!string.IsNullOrEmpty(serverId))
+        {
+            currentScannedServerId = serverId;
+            FetchAndDisplaySpecificServer(serverId);
+        }
+        else
+        {
+            Debug.LogWarning($"[GestureToggle] Could not parse server ID from QR code: {qrData}");
+        }
+    }
+
+    /// <summary>
+    /// Parse server ID from QR code data
+    /// Supports plain text (server ID directly) or JSON format
+    /// </summary>
+    private string ParseServerIdFromQR(string qrData)
+    {
+        if (string.IsNullOrEmpty(qrData))
+            return null;
+
+        // Try parsing as JSON first
+        try
+        {
+            // Simple JSON parsing for {"id":"rack-a-001"} format
+            if (qrData.Contains("{") && qrData.Contains("\"id\""))
+            {
+                var jsonData = JsonUtility.FromJson<QRServerData>(qrData);
+                if (!string.IsNullOrEmpty(jsonData.id))
+                    return jsonData.id;
+            }
+        }
+        catch
+        {
+            // Not JSON, continue to plain text parsing
+        }
+
+        // Assume plain text is the server ID
+        return qrData.Trim();
+    }
+
+    [System.Serializable]
+    private class QRServerData
+    {
+        public string id;
+        public string type;
+    }
+
+    /// <summary>
+    /// Fetch and display information for a specific server by ID
+    /// </summary>
+    private void FetchAndDisplaySpecificServer(string serverId)
+    {
+        Debug.Log($"[GestureToggle] Fetching data for server: {serverId}");
+
+        ServerAPIClient.Instance.GetServer(serverId,
+            onSuccess: (server) =>
+            {
+                Debug.Log($"[GestureToggle] Server found: {server.id} - {server.name}");
+                Debug.Log($"  Location: ({server.location.x}, {server.location.y}, {server.location.z})");
+
+                // Update the display with this specific server
+                UpdatePeaceSignDisplayWithServer(server);
+
+                // Optionally fetch tickets for this server
+                FetchTicketsForServer(serverId);
+            },
+            onError: (error) =>
+            {
+                Debug.LogError($"[GestureToggle] Failed to fetch server {serverId}: {error}");
+                // Show error message in UI
+            }
+        );
+    }
+
+    /// <summary>
+    /// Fetch tickets associated with a specific server
+    /// </summary>
+    private void FetchTicketsForServer(string serverId)
+    {
+        ServerAPIClient.Instance.GetTicketsByServer(serverId,
+            onSuccess: (response) =>
+            {
+                Debug.Log($"[GestureToggle] Found {response.count} ticket(s) for server {serverId}");
+
+                foreach (var ticket in response.tickets)
+                {
+                    Debug.Log($"  - {ticket.key}: {ticket.summary} ({ticket.status})");
+                }
+
+                // Update UI with ticket information
+                UpdatePeaceSignDisplayWithTickets(response);
+            },
+            onError: (error) =>
+            {
+                Debug.LogWarning($"[GestureToggle] No tickets found for server {serverId}: {error}");
+            }
+        );
     }
 
     // Example: Fetch all tickets when rock-and-roll gesture is triggered
@@ -251,6 +395,54 @@ public class GestureToggle : MonoBehaviour
                 float intensity = Mathf.Clamp01(serverData.count / 5f);
                 renderer.material.color = new Color(0f, intensity, 1f - intensity);
             }
+        }
+    }
+
+    /// <summary>
+    /// Update display with specific server information from QR scan
+    /// </summary>
+    private void UpdatePeaceSignDisplayWithServer(ServerAPIClient.Server server)
+    {
+        if (peaceSignTarget != null)
+        {
+            var renderer = peaceSignTarget.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                // Color coding: Green for active server
+                renderer.material.color = new Color(0f, 1f, 0.5f);
+            }
+
+            // TODO: Update text display with server details
+            // Example: Show server name, location, status on a UI panel
+        }
+    }
+
+    /// <summary>
+    /// Update display with tickets for the scanned server
+    /// </summary>
+    private void UpdatePeaceSignDisplayWithTickets(ServerAPIClient.JiraTicketListResponse ticketData)
+    {
+        if (peaceSignTarget != null)
+        {
+            var renderer = peaceSignTarget.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                // Color based on ticket count: More tickets = more urgent (red)
+                if (ticketData.count == 0)
+                {
+                    renderer.material.color = new Color(0f, 1f, 0f); // Green - no issues
+                }
+                else if (ticketData.count <= 2)
+                {
+                    renderer.material.color = new Color(1f, 1f, 0f); // Yellow - some issues
+                }
+                else
+                {
+                    renderer.material.color = new Color(1f, 0f, 0f); // Red - many issues
+                }
+            }
+
+            // TODO: Display ticket list in UI panel
         }
     }
 }
