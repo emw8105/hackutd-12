@@ -1,0 +1,6 @@
+fastapi[standard]
+python-dotenv
+atlassian-python-api
+requests
+python-multipart
+apscheduler
