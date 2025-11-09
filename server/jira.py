@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
 from atlassian import Jira
@@ -98,6 +99,28 @@ class JiraClient:
             logger.error(f"Failed to fetch tickets: {e}")
             raise
 
+    def _extract_server_id(self, text: Optional[str]) -> Optional[str]:
+        """
+        Extract server ID from text within brackets.
+
+        Args:
+            text: Text that may contain server ID in brackets
+
+        Returns:
+            Server ID if found, None otherwise
+        """
+        if not text:
+            return None
+
+        # Look for text within brackets [...]
+        match = re.search(r'\[([^\]]+)\]', text)
+        if match:
+            server_id = match.group(1).strip()
+            logger.debug(f"Extracted server ID: {server_id}")
+            return server_id
+
+        return None
+
     def _parse_ticket(self, issue: Dict[str, Any]) -> Dict[str, Any]:
         """
         Parse raw Jira issue into a simplified ticket structure.
@@ -109,12 +132,19 @@ class JiraClient:
             Parsed ticket dictionary
         """
         fields = issue.get('fields', {})
+        summary = fields.get('summary')
+        description = fields.get('description')
+
+        # Extract server ID from summary first, then description
+        server_id = self._extract_server_id(summary)
+        if not server_id:
+            server_id = self._extract_server_id(description)
 
         return {
             'key': issue.get('key'),
             'id': issue.get('id'),
-            'summary': fields.get('summary'),
-            'description': fields.get('description'),
+            'summary': summary,
+            'description': description,
             'status': fields.get('status', {}).get('name'),
             'status_id': fields.get('status', {}).get('id'),
             'priority': fields.get('priority', {}).get('name') if fields.get('priority') else None,
@@ -125,6 +155,7 @@ class JiraClient:
             'project': fields.get('project', {}).get('key'),
             'issue_type': fields.get('issuetype', {}).get('name'),
             'labels': fields.get('labels', []),
+            'server_id': server_id,
         }
 
     def update_ticket_status(self, ticket_key: str, status_name: str) -> Dict[str, Any]:
@@ -388,6 +419,29 @@ class JiraClient:
 
         except Exception as e:
             logger.error(f"Failed to get ticket {ticket_key}: {e}")
+            raise
+
+    def get_tickets_by_server_id(self, server_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all tickets associated with a specific server ID.
+
+        Args:
+            server_id: The server rack ID to filter by
+
+        Returns:
+            List of tickets for the specified server
+        """
+        try:
+            filtered_tickets = [
+                ticket for ticket in self.tickets
+                if ticket.get('server_id') == server_id
+            ]
+            logger.info(
+                f"Found {len(filtered_tickets)} tickets for server {server_id}")
+            return filtered_tickets
+
+        except Exception as e:
+            logger.error(f"Failed to get tickets for server {server_id}: {e}")
             raise
 
     def get_available_transitions(self, ticket_key: str) -> List[Dict[str, Any]]:

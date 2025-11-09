@@ -2,6 +2,28 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 
 
+# Location model for technician coordinates
+class Location(BaseModel):
+    x: float = Field(description="X coordinate")
+    y: float = Field(description="Y coordinate")
+    z: float = Field(description="Z coordinate")
+
+
+# Technician model
+class Technician(BaseModel):
+    id: str = Field(description="Unique technician identifier")
+    location: Location = Field(
+        description="Current location of the technician")
+
+
+# Server model
+class Server(BaseModel):
+    id: str = Field(
+        description="Unique server identifier (Hall-Pod-Aisle-Rack-U#)")
+    name: str = Field(description="Server name")
+    location: Location = Field(description="Location of the server")
+
+
 # Jira-related models
 class JiraTicket(BaseModel):
     key: Optional[str] = None
@@ -18,6 +40,9 @@ class JiraTicket(BaseModel):
     project: Optional[str] = None
     issue_type: Optional[str] = None
     labels: List[str] = []
+    server_id: Optional[str] = Field(
+        None, description="Server rack ID extracted from ticket (format: Hall-Pod-Aisle-Rack-U#)"
+    )
 
 
 class JiraTicketListResponse(BaseModel):
