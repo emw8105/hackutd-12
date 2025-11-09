@@ -1,0 +1,28 @@
+# Core FastAPI dependencies
+fastapi==0.121.1
+uvicorn==0.38.0
+python-multipart==0.0.20
+python-dotenv==1.2.1
+
+# Scheduling
+APScheduler==3.11.1
+
+# Jira integration
+atlassian-python-api==4.0.7
+
+# Data validation
+pydantic==2.12.4
+pydantic_core==2.41.5
+
+# HTTP requests
+requests==2.32.5
+httpx==0.28.1
+
+# Utilities
+python-dateutil==2.9.0.post0
+pytz==2025.2
+
+# Task assignment optimization
+ortools>=9.14.0
+numpy>=1.26.0
+pandas>=2.0.0

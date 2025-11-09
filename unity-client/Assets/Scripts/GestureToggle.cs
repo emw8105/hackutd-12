@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
 
 public class GestureToggle : MonoBehaviour
 {
@@ -145,6 +147,12 @@ public class GestureToggle : MonoBehaviour
         {
             rockAndRollTarget.SetActive(rockTargetVisible);
             Debug.Log($"[GestureToggle] Rock-and-roll target toggled {(rockTargetVisible ? "ON" : "OFF")}");
+
+            // If toggling ON, fetch data from server
+            if (rockTargetVisible)
+            {
+                FetchAndDisplayTickets();
+            }
         }
     }
 
@@ -155,6 +163,94 @@ public class GestureToggle : MonoBehaviour
         {
             peaceSignTarget.SetActive(peaceTargetVisible);
             Debug.Log($"[GestureToggle] Peace sign target toggled {(peaceTargetVisible ? "ON" : "OFF")}");
+
+            // If toggling ON, fetch different data from server
+            if (peaceTargetVisible)
+            {
+                FetchAndDisplayServers();
+            }
+        }
+    }
+
+    // Example: Fetch all tickets when rock-and-roll gesture is triggered
+    private void FetchAndDisplayTickets()
+    {
+        ServerAPIClient.Instance.GetAllTickets(
+            onSuccess: (response) =>
+            {
+                Debug.Log($"[GestureToggle] Received {response.count} tickets from server");
+
+                // Example: Update the display with ticket information
+                foreach (var ticket in response.tickets)
+                {
+                    Debug.Log($"Ticket: {ticket.key} - {ticket.summary} - Status: {ticket.status}");
+                }
+
+                // TODO: Update your cube/UI display with the ticket data
+                UpdateRockAndRollDisplay(response);
+            },
+            onError: (error) =>
+            {
+                Debug.LogError($"[GestureToggle] Failed to fetch tickets: {error}");
+            }
+        );
+    }
+
+    // Example: Fetch all servers when peace sign gesture is triggered
+    private void FetchAndDisplayServers()
+    {
+        ServerAPIClient.Instance.GetAllServers(
+            onSuccess: (response) =>
+            {
+                Debug.Log($"[GestureToggle] Received {response.count} servers from server");
+
+                foreach (var server in response.servers)
+                {
+                    Debug.Log($"Server: {server.id} - {server.name} at ({server.location.x}, {server.location.y}, {server.location.z})");
+                }
+
+                // TODO: Update your cube/UI display with the server data
+                UpdatePeaceSignDisplay(response);
+            },
+            onError: (error) =>
+            {
+                Debug.LogError($"[GestureToggle] Failed to fetch servers: {error}");
+            }
+        );
+    }
+
+    // Placeholder methods - customize these to update your displays
+    private void UpdateRockAndRollDisplay(ServerAPIClient.JiraTicketListResponse ticketData)
+    {
+        // Example: Change cube color, display text on a canvas, etc.
+        // You can access: ticketData.tickets, ticketData.count
+
+        if (rockAndRollTarget != null)
+        {
+            // Example: Change color based on ticket count
+            var renderer = rockAndRollTarget.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                // More tickets = more red
+                float intensity = Mathf.Clamp01(ticketData.count / 10f);
+                renderer.material.color = new Color(intensity, 1f - intensity, 0f);
+            }
+        }
+    }
+
+    private void UpdatePeaceSignDisplay(ServerAPIClient.ServerListResponse serverData)
+    {
+        // Example: Display server information on the peace sign cube
+
+        if (peaceSignTarget != null)
+        {
+            var renderer = peaceSignTarget.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                // Change color based on server count
+                float intensity = Mathf.Clamp01(serverData.count / 5f);
+                renderer.material.color = new Color(0f, intensity, 1f - intensity);
+            }
         }
     }
 }
