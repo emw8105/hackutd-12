@@ -157,7 +157,6 @@ function App() {
 			);
 
 			try {
-				console.log(distanceMatrix);
 				await fetch("https://hackutd-12-production.up.railway.app/distance", {
 					method: "POST",
 					headers: {
