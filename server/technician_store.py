@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional
 from models import Technician, Location
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -9,6 +10,7 @@ class TechnicianStore:
 
     def __init__(self):
         self._technicians: Dict[str, Technician] = {}
+        self.lock = threading.Lock()
 
     def add_technician(self, technician: Technician) -> Technician:
         """
@@ -20,10 +22,12 @@ class TechnicianStore:
         Returns:
             The added/updated technician
         """
-        self._technicians[technician.id] = technician
-        logger.info(
-            f"Technician {technician.id} added/updated at location ({technician.location.x}, {technician.location.y}, {technician.location.z})")
-        return technician
+        with self.lock:
+            self._technicians[technician.id] = technician
+            logger.info(
+                f"Technician {technician.id} added/updated at location ({technician.location.x}, {technician.location.y}, {technician.location.z})"
+            )
+            return technician
 
     def remove_technician(self, technician_id: str) -> bool:
         """
@@ -35,11 +39,12 @@ class TechnicianStore:
         Returns:
             True if technician was removed, False if not found
         """
-        if technician_id in self._technicians:
-            del self._technicians[technician_id]
-            logger.info(f"Technician {technician_id} removed from store")
-            return True
-        return False
+        with self.lock:
+            if technician_id in self._technicians:
+                del self._technicians[technician_id]
+                logger.info(f"Technician {technician_id} removed from store")
+                return True
+            return False
 
     def get_technician(self, technician_id: str) -> Optional[Technician]:
         """
@@ -51,7 +56,8 @@ class TechnicianStore:
         Returns:
             Technician object if found, None otherwise
         """
-        return self._technicians.get(technician_id)
+        with self.lock:
+            return self._technicians.get(technician_id)
 
     def get_all_technicians(self) -> List[Technician]:
         """
@@ -60,9 +66,12 @@ class TechnicianStore:
         Returns:
             List of all active technicians
         """
-        return list(self._technicians.values())
+        with self.lock:
+            return list(self._technicians.values())
 
-    def update_location(self, technician_id: str, location: Location) -> Optional[Technician]:
+    def update_location(
+        self, technician_id: str, location: Location
+    ) -> Optional[Technician]:
         """
         Update the location of an existing technician.
 
@@ -73,12 +82,14 @@ class TechnicianStore:
         Returns:
             Updated technician if found, None otherwise
         """
-        if technician_id in self._technicians:
-            self._technicians[technician_id].location = location
-            logger.info(
-                f"Technician {technician_id} location updated to ({location.x}, {location.y}, {location.z})")
-            return self._technicians[technician_id]
-        return None
+        with self.lock:
+            if technician_id in self._technicians:
+                self._technicians[technician_id].location = location
+                logger.info(
+                    f"Technician {technician_id} location updated to ({location.x}, {location.y}, {location.z})"
+                )
+                return self._technicians[technician_id]
+            return None
 
     def get_technician_count(self) -> int:
         """
@@ -87,14 +98,16 @@ class TechnicianStore:
         Returns:
             Number of active technicians
         """
-        return len(self._technicians)
+        with self.lock:
+            return len(self._technicians)
 
     def clear_all(self) -> None:
         """
         Clear all technicians from the store.
         """
-        self._technicians.clear()
-        logger.info("All technicians cleared from store")
+        with self.lock:
+            self._technicians.clear()
+            logger.info("All technicians cleared from store")
 
 
 # Global technician store instance
@@ -120,5 +133,6 @@ def get_technician_store() -> TechnicianStore:
     """
     if _technician_store is None:
         raise RuntimeError(
-            "Technician store has not been initialized. Call initialize_technician_store() first.")
+            "Technician store has not been initialized. Call initialize_technician_store() first."
+        )
     return _technician_store
