@@ -72,8 +72,8 @@ public class SimpleQRScanner : MonoBehaviour
             Debug.Log("  1. Look at a QR code");
             Debug.Log("  2. Make peace sign gesture ✌️");
             Debug.Log("  3. Scanner auto-scans what you're looking at!");
-            Debug.Log("\nTESTING CONTROLS (Editor only):");
-            Debug.Log("  [/]      = Cycle which server you're 'looking at' (fallback)");
+            Debug.Log("\nTESTING (Editor only):");
+            Debug.Log("  Right-click component in Inspector → 'Simulate Scan - Server A/B'");
             Debug.Log($"\nScan Camera: {(scanCamera != null ? scanCamera.name : "NOT ASSIGNED")}");
             Debug.Log($"Max Scan Distance: {maxScanDistance}m");
             Debug.Log("═══════════════════════════════════════════════════");
@@ -82,32 +82,16 @@ public class SimpleQRScanner : MonoBehaviour
 
     void Update()
     {
-        if (!isScanning)
-            return;
-
-        // Testing controls - cycle through servers (simulates looking at different servers)
-        // Only in Unity Editor, not in builds
-#if UNITY_EDITOR
-        HandleTestingControls();
-#endif
+        // Removed keyboard testing controls - use Context Menu instead
+        // right-click on component in Inspector → "Simulate Scan - Server A/B"
     }
 
+#if UNITY_EDITOR
     private void HandleTestingControls()
     {
-        // [ and ] = Cycle through servers (simulates turning to look at different servers)
-        if (Input.GetKeyDown(KeyCode.LeftBracket))
-        {
-            selectedServerIndex = (selectedServerIndex - 1 + testServerIds.Length) % testServerIds.Length;
-            if (debugMode)
-                Debug.Log($"<color=cyan>[SimpleQRScanner] Now looking at: {testServerIds[selectedServerIndex]}</color>");
-        }
-        if (Input.GetKeyDown(KeyCode.RightBracket))
-        {
-            selectedServerIndex = (selectedServerIndex + 1) % testServerIds.Length;
-            if (debugMode)
-                Debug.Log($"<color=cyan>[SimpleQRScanner] Now looking at: {testServerIds[selectedServerIndex]}</color>");
-        }
+
     }
+#endif
 
     public void SimulateScan(string qrData)
     {
