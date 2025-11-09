@@ -745,7 +745,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GestureToggle
   leftHandData: {fileID: 666013767}
   rightHandData: {fileID: 1430401741}
-  targetObject: {fileID: 746998584}
+  rockAndRollTarget: {fileID: 746998584}
+  peaceSignTarget: {fileID: 1828272149}
+  gestureHoldTime: 0.5
+  gestureCooldown: 1
+  debugMode: 0
 --- !u!4 &616824020
 Transform:
   m_ObjectHideFlags: 0
