@@ -4,7 +4,14 @@ using System;
 
 public class SimpleQRScanner : MonoBehaviour
 {
-    [Header("Auto-Scan Simulation")]
+    [Header("Raycast Detection")]
+    [Tooltip("Camera to use for raycasting (usually Main Camera or Center Eye Anchor)")]
+    public Camera scanCamera;
+
+    [Tooltip("Maximum distance to detect QR codes")]
+    public float maxScanDistance = 10f;
+
+    [Header("Auto-Scan Simulation (Fallback)")]
     [Tooltip("Server IDs available for testing - simulates looking at different servers")]
     public string[] testServerIds = { "1-01-2-03", "1-01-2-04" };
 
@@ -18,7 +25,7 @@ public class SimpleQRScanner : MonoBehaviour
     [Tooltip("Cooldown between scans (seconds)")]
     public float scanCooldown = 2f;
 
-    [Tooltip("Auto-scan when activated (simulates instant camera scan)")]
+    [Tooltip("Auto-scan when activated (uses raycast to detect QR code)")]
     public bool autoScanOnActivation = true;
 
     [Header("Visual Feedback")]
@@ -42,6 +49,16 @@ public class SimpleQRScanner : MonoBehaviour
 
     void Start()
     {
+        // Auto-find camera if not assigned
+        if (scanCamera == null)
+        {
+            scanCamera = Camera.main;
+            if (scanCamera == null)
+            {
+                Debug.LogWarning("[SimpleQRScanner] No camera assigned and Camera.main not found. Will use fallback scanning.");
+            }
+        }
+
         if (scanningPanel != null)
             scanningPanel.SetActive(false);
         if (scanReticle != null)
@@ -50,14 +67,15 @@ public class SimpleQRScanner : MonoBehaviour
         if (debugMode)
         {
             Debug.Log("═══════════════════════════════════════════════════");
-            Debug.Log("[SimpleQRScanner] QR Scanner Ready (AUTO-SCAN MODE)");
+            Debug.Log("[SimpleQRScanner] QR Scanner Ready (RAYCAST MODE)");
             Debug.Log("WORKFLOW:");
-            Debug.Log("  1. Make peace sign gesture ✌️");
-            Debug.Log("  2. Scanner auto-scans immediately!");
+            Debug.Log("  1. Look at a QR code");
+            Debug.Log("  2. Make peace sign gesture ✌️");
+            Debug.Log("  3. Scanner auto-scans what you're looking at!");
             Debug.Log("\nTESTING CONTROLS (Editor only):");
-            Debug.Log("  [/]      = Cycle which server you're 'looking at'");
-            Debug.Log($"\nAvailable Servers: {string.Join(", ", testServerIds)}");
-            Debug.Log($"Currently looking at: {(testServerIds.Length > 0 ? testServerIds[selectedServerIndex] : "none")}");
+            Debug.Log("  [/]      = Cycle which server you're 'looking at' (fallback)");
+            Debug.Log($"\nScan Camera: {(scanCamera != null ? scanCamera.name : "NOT ASSIGNED")}");
+            Debug.Log($"Max Scan Distance: {maxScanDistance}m");
             Debug.Log("═══════════════════════════════════════════════════");
         }
     }
@@ -71,9 +89,6 @@ public class SimpleQRScanner : MonoBehaviour
         HandleTestingControls();
     }
 
-    /// <summary>
-    /// Handle testing controls for cycling through servers (Editor only)
-    /// </summary>
     private void HandleTestingControls()
     {
         // [ and ] = Cycle through servers (simulates turning to look at different servers)
@@ -91,9 +106,6 @@ public class SimpleQRScanner : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Simulate scanning a QR code with the given data
-    /// </summary>
     public void SimulateScan(string qrData)
     {
         if (string.IsNullOrEmpty(qrData))
@@ -170,16 +182,96 @@ public class SimpleQRScanner : MonoBehaviour
 
     /// <summary>
     /// Perform the automatic scan when activated
+    /// Uses raycast to detect which QR code the user is looking at
     /// </summary>
     private void PerformAutoScan()
     {
-        if (isScanning && testServerIds.Length > 0 && selectedServerIndex < testServerIds.Length)
-        {
-            SimulateScan(testServerIds[selectedServerIndex]);
+        if (!isScanning)
+            return;
 
-            // Auto-stop after scanning (peace sign gesture toggles, so it will turn off)
-            Invoke("StopScanning", 0.5f);
+        // Try raycast detection first
+        string detectedServerId = DetectQRCodeWithRaycast();
+
+        if (!string.IsNullOrEmpty(detectedServerId))
+        {
+            // Successfully detected a QR code with raycast
+            SimulateScan(detectedServerId);
         }
+        else
+        {
+            // Fallback to testServerIds if raycast didn't detect anything
+            if (testServerIds.Length > 0 && selectedServerIndex < testServerIds.Length)
+            {
+                Debug.LogWarning("[SimpleQRScanner] No QR code detected with raycast, using fallback test server");
+                SimulateScan(testServerIds[selectedServerIndex]);
+            }
+            else
+            {
+                Debug.LogWarning("[SimpleQRScanner] No QR code detected and no fallback servers available");
+            }
+        }
+
+        // Auto-stop after scanning
+        Invoke("StopScanning", 0.5f);
+    }
+
+    /// <summary>
+    /// Use raycast to detect which QR code GameObject the camera is looking at
+    /// </summary>
+    private string DetectQRCodeWithRaycast()
+    {
+        if (scanCamera == null)
+        {
+            Debug.LogWarning("[SimpleQRScanner] No scan camera assigned for raycast detection");
+            return null;
+        }
+
+        // Cast a ray from the center of the camera
+        Ray ray = new Ray(scanCamera.transform.position, scanCamera.transform.forward);
+        RaycastHit hit;
+
+        if (debugMode)
+        {
+            Debug.Log($"[SimpleQRScanner] Raycasting from {scanCamera.name} position {scanCamera.transform.position} direction {scanCamera.transform.forward}");
+            // Draw debug ray in scene view
+            Debug.DrawRay(ray.origin, ray.direction * maxScanDistance, Color.green, 2f);
+        }
+
+        if (Physics.Raycast(ray, out hit, maxScanDistance))
+        {
+            if (debugMode)
+            {
+                Debug.Log($"[SimpleQRScanner] Raycast hit: {hit.collider.gameObject.name} at distance {hit.distance:F2}m");
+            }
+
+            // Check if the hit object is a QR code display
+            QRCodeDisplay qrDisplay = hit.collider.GetComponent<QRCodeDisplay>();
+            if (qrDisplay != null)
+            {
+                string serverId = qrDisplay.GetServerId();
+                if (debugMode)
+                {
+                    Debug.Log($"<color=green>[SimpleQRScanner] ✓ Detected QR Code: {serverId}</color>");
+                }
+                return serverId;
+            }
+            else
+            {
+                if (debugMode)
+                {
+                    Debug.Log($"[SimpleQRScanner] Hit object '{hit.collider.gameObject.name}' has no QRCodeDisplay component");
+                }
+            }
+        }
+        else
+        {
+            if (debugMode)
+            {
+                Debug.Log("[SimpleQRScanner] Raycast didn't hit anything within range");
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -236,12 +328,12 @@ public class SimpleQRScanner : MonoBehaviour
     [ContextMenu("Simulate Scan - Server A")]
     private void ScanServerA()
     {
-        SimulateScan("rack-a-001");
+        SimulateScan("1-01-2-03");
     }
 
     [ContextMenu("Simulate Scan - Server B")]
     private void ScanServerB()
     {
-        SimulateScan("rack-b-002");
+        SimulateScan("1-01-2-04");
     }
 }

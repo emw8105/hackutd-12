@@ -76,6 +76,14 @@ public class QRCodeDisplay : MonoBehaviour
         SetupQRCodeDisplay();
     }
 
+    /// <summary>
+    /// Get the server ID this QR code represents
+    /// </summary>
+    public string GetServerId()
+    {
+        return serverId;
+    }
+
     // Visual helper in Scene view
     void OnDrawGizmos()
     {

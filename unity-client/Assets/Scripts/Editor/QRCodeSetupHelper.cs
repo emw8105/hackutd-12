@@ -123,6 +123,18 @@ public class QRCodeSetupHelper : EditorWindow
             renderer.material = newMat;
         }
 
+        // Add or update collider for raycast detection
+        // Remove any existing colliders first
+        Collider[] existingColliders = qrObject.GetComponents<Collider>();
+        foreach (Collider col in existingColliders)
+        {
+            DestroyImmediate(col);
+        }
+
+        // Add a MeshCollider for the quad
+        MeshCollider meshCollider = qrObject.AddComponent<MeshCollider>();
+        meshCollider.convex = false; // Quad is flat, doesn't need convex
+
         // Add QRCodeDisplay component for reference
         QRCodeDisplay qrDisplay = qrObject.GetComponent<QRCodeDisplay>();
         if (qrDisplay == null)
@@ -132,7 +144,7 @@ public class QRCodeSetupHelper : EditorWindow
         qrDisplay.qrCodeTexture = texture;
         qrDisplay.serverId = serverId;
 
-        Debug.Log($"✓ Created {name} by cloning cube at {position} with server ID: {serverId}");
+        Debug.Log($"✓ Created {name} by cloning cube at {position} with server ID: {serverId} (with MeshCollider)");
     }
 
     void CreateQRCodePlane(string name, Texture2D texture, string serverId, Vector3 position, Transform parent)

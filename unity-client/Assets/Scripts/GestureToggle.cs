@@ -212,9 +212,6 @@ public class GestureToggle : MonoBehaviour
     {
         Debug.Log($"[GestureToggle] QR Code scanned: {qrData}");
 
-        // Assume QR code contains the server ID (e.g., "rack-a-001")
-        // You can also use JSON format like: {"type":"server","id":"rack-a-001"}
-
         string serverId = ParseServerIdFromQR(qrData);
 
         if (!string.IsNullOrEmpty(serverId))
