@@ -61,3 +61,7 @@ class JiraComment(BaseModel):
 class TechnicianEvents(BaseModel):
     event_type: Literal["online"]
     payload: Optional[Technician] = None
+
+class TechnicianResponse(BaseModel):
+    event_type: Literal["assignment"]
+    payload: JiraTicket

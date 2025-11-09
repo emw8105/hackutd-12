@@ -15,6 +15,7 @@ from models import (
     Location,
     Server,
     TechnicianEvents,
+    TechnicianResponse
 )
 from jira import initialize_jira_client, get_jira_client
 from technician_store import initialize_technician_store, get_technician_store
@@ -514,25 +515,28 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     while True:
         data = await websocket.receive_json()
+        logger.info(data)
         try:
             event = TechnicianEvents(**data)  # Process incoming data as needed
             logger.info(event)
             if event.event_type == "online":
                 store = get_technician_store()
                 tech_id = event.payload.id
+                if store.get_technician(tech_id) is not None:
+                    return
                 store.add_technician(
                     Technician(id=tech_id, location=event.payload.location)
                 )
+                # TODO: distance
                 task_assigner.add_technician(tech_id, 10)
-                client = get_jira_client()
-                tickets_data = client.get_all_tickets()
-                tickets = [JiraTicket(**ticket) for ticket in tickets_data]
-                logger.info(tickets)
 
-                logger.info(task_assigner.technicians)
-                logger.info(task_assigner.tasks)
-                logger.info(task_assigner.distances)
-                logger.info(task_assigner.assign_tasks())
+                assignments = task_assigner.assign_tasks()
+                logger.info(assignments)
+                if tech_id in assignments:
+                    response = TechnicianResponse(event_type="assignment",
+                                                  payload = assignments[tech_id])
+                    await websocket.send_json(response.dict())
+                    logger.info("Sending back assignment: ", response)
         except Exception as e:
-            logger.info("Invalid JSON received, ignoring.", e)
+            logger.info("Invalid JSON received, ignoring.", data, e)
         continue
