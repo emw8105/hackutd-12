@@ -19,6 +19,7 @@ from models import (
 from jira import initialize_jira_client, get_jira_client
 from technician_store import initialize_technician_store, get_technician_store
 from server_store import initialize_server_store, get_server_store
+from get_server_data import get_server_metrics, get_server_logs
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -70,7 +71,8 @@ async def lifespan(app: FastAPI):
     # Initialize server store with JSON data
     try:
         initialize_server_store("server_locations.json")
-        logger.info("Server store initialized with data from server_locations.json")
+        logger.info(
+            "Server store initialized with data from server_locations.json")
     except Exception as e:
         logger.error(f"Failed to initialize server store: {e}")
         print(f"Warning: Failed to initialize server store: {e}")
@@ -96,7 +98,8 @@ def get_all_tickets():
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get tickets: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get tickets: {str(e)}")
 
 
 @app.get("/items/{ticket_key}", response_model=JiraTicket)
@@ -109,7 +112,8 @@ def get_ticket(ticket_key: str):
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Ticket not found: {str(e)}")
+        raise HTTPException(
+            status_code=404, detail=f"Ticket not found: {str(e)}")
 
 
 @app.get("/items/by-server/{server_id}")
@@ -165,7 +169,8 @@ def get_server_from_ticket(ticket_key: str):
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Ticket not found: {str(e)}")
+        raise HTTPException(
+            status_code=404, detail=f"Ticket not found: {str(e)}")
 
 
 @app.get("/items/by-server/{server_id}")
@@ -231,7 +236,8 @@ def update_ticket_status(ticket_key: str, status_update: JiraStatusUpdate):
     """Update the status of a Jira ticket."""
     try:
         client = get_jira_client()
-        updated_ticket = client.update_ticket_status(ticket_key, status_update.status)
+        updated_ticket = client.update_ticket_status(
+            ticket_key, status_update.status)
 
         # If successful, refresh the tickets
         refresh_jira_tickets()
@@ -266,7 +272,8 @@ def add_comment(ticket_key: str, comment: JiraComment):
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to add comment: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to add comment: {str(e)}")
 
 
 @app.post("/items/{ticket_key}/attachments")
@@ -279,7 +286,8 @@ async def add_attachment(ticket_key: str, file: UploadFile = File(...)):
         file_data = await file.read()
 
         # Upload to Jira
-        result = client.add_attachment_from_bytes(ticket_key, file_data, file.filename)
+        result = client.add_attachment_from_bytes(
+            ticket_key, file_data, file.filename)
 
         refresh_jira_tickets()
 
@@ -451,15 +459,25 @@ def get_all_servers():
         raise HTTPException(status_code=500, detail=f"Failed to get servers: {str(e)}")
 
 
-@app.get("/servers/{server_id}", response_model=Server)
+@app.get("/servers/{server_id}")
 def get_server(server_id: str):
-    """Get a specific server by ID."""
+    """Get a specific server by ID with real-time metrics and logs."""
     try:
         store = get_server_store()
         server = store.get_server(server_id)
         if server is None:
-            raise HTTPException(status_code=404, detail=f"Server {server_id} not found")
-        return server
+            raise HTTPException(
+                status_code=404, detail=f"Server {server_id} not found")
+
+        metrics = get_server_metrics(server_id)
+        logs = get_server_logs(server_id, limit=5)
+
+        return {
+            "server": server,
+            "metrics": metrics,
+            "recent_logs": logs,
+            "message": f"Successfully retrieved server {server_id} with metrics and logs"
+        }
     except HTTPException:
         raise
     except RuntimeError as e:
