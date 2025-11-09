@@ -480,11 +480,6 @@ def initialize_jira_client() -> JiraClient:
         logger.info("Initializing Jira client...")
         jira_client = JiraClient()
 
-        # Pull all tickets on startup
-        logger.info("Fetching all tickets on startup...")
-        tickets = jira_client.get_all_tickets()
-        logger.info(f"Startup complete. Loaded {len(tickets)} tickets.")
-
         return jira_client
 
     except Exception as e:

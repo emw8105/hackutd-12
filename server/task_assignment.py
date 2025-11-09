@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from ortools.graph.python import min_cost_flow
 import numpy as np
-from dataclasses import dataclass
+import threading
 import copy
+import logging
 
 import config
 import models
@@ -24,6 +25,8 @@ import models
 
 # # Task Priority (higher is better, e.g., 1-10)
 # task_priorities = np.array([5, 8, 2, 7])
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class TaskAssigner:
@@ -31,60 +34,64 @@ class TaskAssigner:
         self,
         technicians: list[str] = [],
         tasks: list[models.JiraTicket] = [],
-        distances: np.ndarray = np.array([]),
+        distances: list[int] = [],
         priority_weight: float = config.TASK_PRIORITY_WEIGHT,
     ):
         self.priority_weight = priority_weight
         self.graph: "Graph" | None = None
         self.technicians: list[str] = technicians
-        self.distances: np.ndarray = distances
+        self.distances: list[int] = distances
         self.tasks: list[models.JiraTicket] = tasks
         self.assignments = {}
+        self.lock = threading.Lock()
+        logger.info("Initialized TaskAssigner")
+
+    def add_technician(self, technician: str, distance: int) -> None:
+        with self.lock:
+            self.technicians.append(technician)
+            self.distances.append(distance)
+            self._rebuild_graph_unsafe()
 
     def _CONSTANT_PRIORITIES(self, num_tasks: int) -> np.ndarray:
         return np.array([1] * num_tasks)
 
-    def set_distances(self, distances: np.ndarray) -> None:
-        self.distances = distances
-        if self.technicians and self.tasks:
+    def _rebuild_graph_unsafe(self):
+        if self.technicians and self.tasks and self.distances:
             self.graph = Graph(
-                technitions=self.technicians,
+                technicians=self.technicians,
                 tasks=self.tasks,
-                distances=self.distances,
+                distances=np.array(self.distances),
                 task_priorities=self._CONSTANT_PRIORITIES(len(self.tasks)),
                 priority_weight=config.TASK_PRIORITY_WEIGHT,
             )
+
+    def set_distances(self, distances: np.ndarray) -> None:
+        with self.lock:
+            self.distances = distances
+            self._rebuild_graph_unsafe()
 
     def refresh_technicians(
         self,
         technicians: list[str],
     ) -> None:
-        self.technicians = technicians
-        if self.tasks:
-            self.graph = Graph(
-                technitions=self.technicians,
-                tasks=self.tasks,
-                distances=self.distances,
-                task_priorities=self._CONSTANT_PRIORITIES(),
-                priority_weight=config.TASK_PRIORITY_WEIGHT,
-            )
+        with self.lock:
+            self.technicians = technicians
+            self._rebuild_graph_unsafe()
 
     def refresh_tasks(
         self,
         tasks: list[models.JiraTicket],
     ) -> None:
-        self.tasks = tasks
-        if self.technicians:
-            self.graph = Graph(
-                technitions=self.technicians,
-                tasks=self.tasks,
-                distances=self.distances,
-                task_priorities=self._CONSTANT_PRIORITIES(),
-                priority_weight=config.TASK_PRIORITY_WEIGHT,
-            )
+        logging.info("Refreshing tasks in TaskAssigner")
+        with self.lock:
+            self.tasks = copy.deepcopy(tasks)
+            self._rebuild_graph_unsafe()
 
     def assign_tasks(self) -> dict[str, models.JiraTicket]:
-        self.assignments = self.graph.solve_graph()
+        with self.lock:
+            if self.graph:
+                self.assignments = self.graph.solve_graph()
+        return self.assignments
 
 
 class Graph:
@@ -216,3 +223,43 @@ class Graph:
 
 
 task_assigner: TaskAssigner = TaskAssigner(priority_weight=config.TASK_PRIORITY_WEIGHT)
+
+# tickets = [
+#     models.JiraTicket(
+#         key="KAN-2",
+#         id="10033",
+#         summary="PLS HELP",
+#         description="[1-01-2-04]",
+#         status="To Do",
+#         status_id="10000",
+#         priority="Medium",
+#         assignee=None,
+#         reporter="Ruben Olano",
+#         created="2025-11-08T20:41:10.471-0600",
+#         updated="2025-11-08T22:30:06.368-0600",
+#         project="KAN",
+#         issue_type="Task",
+#         labels=[],
+#         server_id="1-01-2-04",
+#     ),
+#     models.JiraTicket(
+#         key="KAN-1",
+#         id="10000",
+#         summary="MVP",
+#         description="[1-01-2-03]",
+#         status="In Progress",
+#         status_id="10001",
+#         priority="Medium",
+#         assignee=None,
+#         reporter="Ruben Olano",
+#         created="2025-11-08T16:48:23.241-0600",
+#         updated="2025-11-08T22:29:45.515-0600",
+#         project="KAN",
+#         issue_type="Task",
+#         labels=[],
+#         server_id="1-01-2-03",
+#     ),
+# ]
+# task_assigner.refresh_tasks(tickets)
+# task_assigner.add_technician("tech_1", 10)
+# print(task_assigner.assign_tasks())

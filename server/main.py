@@ -14,6 +14,7 @@ from models import (
     Technician,
     Location,
     Server,
+    TechnicianEvents,
 )
 from jira import initialize_jira_client, get_jira_client
 from technician_store import initialize_technician_store, get_technician_store
@@ -45,6 +46,7 @@ async def lifespan(app: FastAPI):
     # Startup: Initialize Jira client, technician store, and fetch all tickets
     try:
         initialize_jira_client()
+        refresh_jira_tickets()
 
         # Start the scheduler
         scheduler.add_job(
@@ -314,24 +316,9 @@ def manual_refresh():
         )
 
 
-@app.websocket("/ws/technician")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    while True:
-        data = await websocket.receive_text()
-        try:
-            event = TechnicianEvents(
-                **json.loads(data)
-            )  # Process incoming data as needed
-        except:
-            print("Invalid JSON received, ignoring.")
-            continue
-        # await websocket.send_text(f"Message text was: {data}")
-
-
 def handle_technician_events(event: TechnicianEvents):
     if event._type == "online":
-        task_assigner.refresh_technicians()
+        task_assigner._refresh_technicians()
 
 
 # Technician endpoints
@@ -520,3 +507,32 @@ def remove_server(server_id: str):
         raise HTTPException(
             status_code=500, detail=f"Failed to remove server: {str(e)}"
         )
+
+
+@app.websocket("/ws/technician")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        data = await websocket.receive_json()
+        try:
+            event = TechnicianEvents(**data)  # Process incoming data as needed
+            logger.info(event)
+            if event.event_type == "online":
+                store = get_technician_store()
+                tech_id = event.payload.id
+                store.add_technician(
+                    Technician(id=tech_id, location=event.payload.location)
+                )
+                task_assigner.add_technician(tech_id, 10)
+                client = get_jira_client()
+                tickets_data = client.get_all_tickets()
+                tickets = [JiraTicket(**ticket) for ticket in tickets_data]
+                logger.info(tickets)
+
+                logger.info(task_assigner.technicians)
+                logger.info(task_assigner.tasks)
+                logger.info(task_assigner.distances)
+                logger.info(task_assigner.assign_tasks())
+        except Exception as e:
+            logger.info("Invalid JSON received, ignoring.", e)
+        continue
