@@ -1,9 +1,11 @@
 from fastapi import FastAPI, HTTPException, File, UploadFile, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import logging
 import json
+import config
 
 from task_assignment import task_assigner
 from models import (
@@ -15,6 +17,8 @@ from models import (
     Location,
     Server,
     TechnicianEvents,
+    FloorUpdate,
+    TechnicianResponse,
 )
 from jira import initialize_jira_client, get_jira_client
 from technician_store import initialize_technician_store, get_technician_store
@@ -71,8 +75,7 @@ async def lifespan(app: FastAPI):
     # Initialize server store with JSON data
     try:
         initialize_server_store("server_locations.json")
-        logger.info(
-            "Server store initialized with data from server_locations.json")
+        logger.info("Server store initialized with data from server_locations.json")
     except Exception as e:
         logger.error(f"Failed to initialize server store: {e}")
         print(f"Warning: Failed to initialize server store: {e}")
@@ -85,6 +88,80 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.post("/floor_updates")
+def post_distances(floor_update: FloorUpdate):
+    """Receive distances matrix and update task assigner."""
+    try:
+        server_store = get_server_store()
+        for rack_id, location in zip(
+            floor_update.rack_ids, floor_update.rack_locations
+        ):
+            # Assume every rack has 10 servers
+            for i in range(10):
+                server_id = f"{rack_id[:11]}-U{i+1}"
+                server_store.add_server(
+                    Server(
+                        id=server_id,
+                        location=location,
+                        name=server_id,
+                    )
+                )
+
+        technician_store = get_technician_store()
+        for technician in floor_update.technicians:
+            # Update technician store
+            technician_store.add_technician(
+                Technician(
+                    id=technician.id,
+                    location=technician.location,
+                )
+            )
+
+        # Find distance between only taskable servers.
+        taskable_server_ids = set(
+            [t["server_id"] for t in get_jira_client().get_all_tickets()]
+        )
+        distances = []
+        for technician in get_technician_store().get_all_technicians():
+            tech_distances = []
+            for server in [
+                s
+                for s in get_server_store().get_all_servers()
+                if s.id in taskable_server_ids
+            ]:
+                # Euclidean distance + floor distance
+                distance = int(
+                    (
+                        (technician.location.x - server.location.x) ** 2
+                        + (technician.location.y - server.location.y) ** 2
+                    )
+                    ** 0.5
+                    + abs(technician.location.z - server.location.z)
+                    * config.FLOOR_WEIGHT
+                )
+                tech_distances.append(distance)
+            distances.append(tech_distances)
+
+        logger.info(f"Updating distances matrix: {json.dumps(distances)}")
+        logger.info(f"Technicians: {[tech.id for tech in floor_update.technicians]}")
+        task_assigner.update_floor(
+            [tech.id for tech in floor_update.technicians], distances
+        )
+
+        return {
+            "message": "Successfully updated distances matrix",
+        }
+    except Exception as e:
+        raise ValueError(f"Failed to update distances: {str(e)}")
 
 
 # Jira endpoints
@@ -98,8 +175,7 @@ def get_all_tickets():
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get tickets: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get tickets: {str(e)}")
 
 
 @app.get("/items/{ticket_key}", response_model=JiraTicket)
@@ -112,8 +188,7 @@ def get_ticket(ticket_key: str):
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        raise HTTPException(
-            status_code=404, detail=f"Ticket not found: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"Ticket not found: {str(e)}")
 
 
 @app.get("/items/by-server/{server_id}")
@@ -169,8 +244,7 @@ def get_server_from_ticket(ticket_key: str):
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        raise HTTPException(
-            status_code=404, detail=f"Ticket not found: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"Ticket not found: {str(e)}")
 
 
 @app.get("/items/by-server/{server_id}")
@@ -236,8 +310,7 @@ def update_ticket_status(ticket_key: str, status_update: JiraStatusUpdate):
     """Update the status of a Jira ticket."""
     try:
         client = get_jira_client()
-        updated_ticket = client.update_ticket_status(
-            ticket_key, status_update.status)
+        updated_ticket = client.update_ticket_status(ticket_key, status_update.status)
 
         # If successful, refresh the tickets
         refresh_jira_tickets()
@@ -272,8 +345,7 @@ def add_comment(ticket_key: str, comment: JiraComment):
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to add comment: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to add comment: {str(e)}")
 
 
 @app.post("/items/{ticket_key}/attachments")
@@ -286,8 +358,7 @@ async def add_attachment(ticket_key: str, file: UploadFile = File(...)):
         file_data = await file.read()
 
         # Upload to Jira
-        result = client.add_attachment_from_bytes(
-            ticket_key, file_data, file.filename)
+        result = client.add_attachment_from_bytes(ticket_key, file_data, file.filename)
 
         refresh_jira_tickets()
 
@@ -322,11 +393,6 @@ def manual_refresh():
         raise HTTPException(
             status_code=500, detail=f"Failed to refresh tickets: {str(e)}"
         )
-
-
-def handle_technician_events(event: TechnicianEvents):
-    if event._type == "online":
-        task_assigner._refresh_technicians()
 
 
 # Technician endpoints
@@ -466,8 +532,7 @@ def get_server(server_id: str):
         store = get_server_store()
         server = store.get_server(server_id)
         if server is None:
-            raise HTTPException(
-                status_code=404, detail=f"Server {server_id} not found")
+            raise HTTPException(status_code=404, detail=f"Server {server_id} not found")
 
         metrics = get_server_metrics(server_id)
         logs = get_server_logs(server_id, limit=5)
@@ -476,7 +541,7 @@ def get_server(server_id: str):
             "server": server,
             "metrics": metrics,
             "recent_logs": logs,
-            "message": f"Successfully retrieved server {server_id} with metrics and logs"
+            "message": f"Successfully retrieved server {server_id} with metrics and logs",
         }
     except HTTPException:
         raise
@@ -541,7 +606,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 store.add_technician(
                     Technician(id=tech_id, location=event.payload.location)
                 )
-                task_assigner.add_technician(tech_id, 10)
+                task_assigner.add_technician(
+                    tech_id, [float("inf")] * len(task_assigner.tasks)
+                )
                 client = get_jira_client()
                 tickets_data = client.get_all_tickets()
                 tickets = [JiraTicket(**ticket) for ticket in tickets_data]
@@ -553,4 +620,33 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.info(task_assigner.assign_tasks())
         except Exception as e:
             logger.info("Invalid JSON received, ignoring.", e)
+        continue
+
+
+@app.websocket("/ws/technician")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        data = await websocket.receive_json()
+        logger.info(data)
+        try:
+            event = TechnicianEvents(**data)  # Process incoming data as needed
+            logger.info(event)
+            if event.event_type == "online":
+                store = get_technician_store()
+                tech_id = event.payload.id
+
+                if store.get_technician(tech_id) is None:
+                    return
+
+                assignments = task_assigner.assign_tasks()
+                logger.info(assignments)
+                if tech_id in assignments:
+                    response = TechnicianResponse(
+                        event_type="assignment", payload=assignments[tech_id]
+                    )
+                    await websocket.send_json(response.dict())
+                    logger.info("Sending back assignment: ", response)
+        except Exception as e:
+            logger.info("Invalid JSON received, ignoring.", data, e)
         continue
