@@ -30,8 +30,6 @@ public class GestureToggle : MonoBehaviour
 
     private bool rockGestureTriggered = false;
     private bool peaceGestureTriggered = false;
-    private bool rockTargetVisible = true;
-    private bool peaceTargetVisible = true;
     private float rockGestureHoldTimer = 0f;
     private float peaceGestureHoldTimer = 0f;
     private float rockCooldownTimer = 0f;
@@ -44,6 +42,19 @@ public class GestureToggle : MonoBehaviour
         if (simpleQrScanner != null)
         {
             simpleQrScanner.OnQRCodeScanned.AddListener(OnQRCodeDetected);
+        }
+
+        // Ensure cubes are visible at start with neutral color
+        if (rockAndRollTarget != null)
+        {
+            rockAndRollTarget.SetActive(true);
+            SetCubeColor(rockAndRollTarget, Color.gray); // Neutral gray
+        }
+
+        if (peaceSignTarget != null)
+        {
+            peaceSignTarget.SetActive(true);
+            SetCubeColor(peaceSignTarget, Color.gray); // Neutral gray
         }
     }
 
@@ -158,50 +169,23 @@ public class GestureToggle : MonoBehaviour
 
     private void ToggleRockAndRollTarget()
     {
-        rockTargetVisible = !rockTargetVisible;
-        if (rockAndRollTarget != null)
-        {
-            rockAndRollTarget.SetActive(rockTargetVisible);
-            Debug.Log($"[GestureToggle] Rock-and-roll target toggled {(rockTargetVisible ? "ON" : "OFF")}");
-
-            // If toggling ON, fetch data from server
-            if (rockTargetVisible)
-            {
-                FetchAndDisplayTickets();
-            }
-        }
+        Debug.Log("[GestureToggle] Rock-and-roll gesture triggered - Fetching tickets...");
+        FetchAndDisplayTickets();
     }
 
     private void TogglePeaceSignTarget()
     {
-        peaceTargetVisible = !peaceTargetVisible;
-        if (peaceSignTarget != null)
-        {
-            peaceSignTarget.SetActive(peaceTargetVisible);
-            Debug.Log($"[GestureToggle] Peace sign target toggled {(peaceTargetVisible ? "ON" : "OFF")}");
+        Debug.Log("[GestureToggle] Peace sign gesture triggered - Starting QR scan...");
 
-            // If toggling ON, start QR scanning
-            if (peaceTargetVisible)
-            {
-                if (enableQRScanOnPeaceSign && simpleQrScanner != null)
-                {
-                    Debug.Log("[GestureToggle] Starting QR scanner for server detection...");
-                    simpleQrScanner.StartScanning();
-                }
-                else
-                {
-                    // Fallback: Show all servers if QR scanner not available
-                    FetchAndDisplayServers();
-                }
-            }
-            else
-            {
-                // Stop scanning when modal closes
-                if (simpleQrScanner != null && simpleQrScanner.IsScanning())
-                {
-                    simpleQrScanner.StopScanning();
-                }
-            }
+        if (enableQRScanOnPeaceSign && simpleQrScanner != null)
+        {
+            Debug.Log("[GestureToggle] Starting QR scanner for server detection...");
+            simpleQrScanner.StartScanning();
+        }
+        else
+        {
+            // Fallback: Show all servers if QR scanner not available
+            FetchAndDisplayServers();
         }
     }
 
@@ -271,7 +255,7 @@ public class GestureToggle : MonoBehaviour
         ServerAPIClient.Instance.GetServer(serverId,
             onSuccess: (server) =>
             {
-                Debug.Log($"[GestureToggle] Server found: {server.id} - {server.name}");
+                Debug.Log($"[GestureToggle] ✓ SUCCESS: Server found: {server.id} - {server.name}");
                 Debug.Log($"  Location: ({server.location.x}, {server.location.y}, {server.location.z})");
 
                 // Update the display with this specific server
@@ -282,8 +266,9 @@ public class GestureToggle : MonoBehaviour
             },
             onError: (error) =>
             {
-                Debug.LogError($"[GestureToggle] Failed to fetch server {serverId}: {error}");
-                // Show error message in UI
+                Debug.LogError($"[GestureToggle] ✗ FAILED to fetch server {serverId}: {error}");
+                // Set cube to RED on error
+                SetCubeColor(peaceSignTarget, Color.red);
             }
         );
     }
@@ -319,7 +304,7 @@ public class GestureToggle : MonoBehaviour
         ServerAPIClient.Instance.GetAllTickets(
             onSuccess: (response) =>
             {
-                Debug.Log($"[GestureToggle] Received {response.count} tickets from server");
+                Debug.Log($"[GestureToggle] ✓ SUCCESS: Received {response.count} tickets from server");
 
                 // Example: Update the display with ticket information
                 foreach (var ticket in response.tickets)
@@ -327,12 +312,14 @@ public class GestureToggle : MonoBehaviour
                     Debug.Log($"Ticket: {ticket.key} - {ticket.summary} - Status: {ticket.status}");
                 }
 
-                // TODO: Update your cube/UI display with the ticket data
+                // Update cube to GREEN on success
                 UpdateRockAndRollDisplay(response);
             },
             onError: (error) =>
             {
-                Debug.LogError($"[GestureToggle] Failed to fetch tickets: {error}");
+                Debug.LogError($"[GestureToggle] ✗ FAILED to fetch tickets: {error}");
+                // Set cube to RED on error
+                SetCubeColor(rockAndRollTarget, Color.red);
             }
         );
     }
@@ -343,19 +330,21 @@ public class GestureToggle : MonoBehaviour
         ServerAPIClient.Instance.GetAllServers(
             onSuccess: (response) =>
             {
-                Debug.Log($"[GestureToggle] Received {response.count} servers from server");
+                Debug.Log($"[GestureToggle] ✓ SUCCESS: Received {response.count} servers from server");
 
                 foreach (var server in response.servers)
                 {
                     Debug.Log($"Server: {server.id} - {server.name} at ({server.location.x}, {server.location.y}, {server.location.z})");
                 }
 
-                // TODO: Update your cube/UI display with the server data
+                // Update cube to GREEN on success
                 UpdatePeaceSignDisplay(response);
             },
             onError: (error) =>
             {
-                Debug.LogError($"[GestureToggle] Failed to fetch servers: {error}");
+                Debug.LogError($"[GestureToggle] ✗ FAILED to fetch servers: {error}");
+                // Set cube to RED on error
+                SetCubeColor(peaceSignTarget, Color.red);
             }
         );
     }
@@ -363,36 +352,18 @@ public class GestureToggle : MonoBehaviour
     // Placeholder methods - customize these to update your displays
     private void UpdateRockAndRollDisplay(ServerAPIClient.JiraTicketListResponse ticketData)
     {
-        // Example: Change cube color, display text on a canvas, etc.
-        // You can access: ticketData.tickets, ticketData.count
+        // Set cube to GREEN on successful API call
+        SetCubeColor(rockAndRollTarget, Color.green);
 
-        if (rockAndRollTarget != null)
-        {
-            // Example: Change color based on ticket count
-            var renderer = rockAndRollTarget.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                // More tickets = more red
-                float intensity = Mathf.Clamp01(ticketData.count / 10f);
-                renderer.material.color = new Color(intensity, 1f - intensity, 0f);
-            }
-        }
+        Debug.Log($"[GestureToggle] Rock-and-roll cube set to GREEN - {ticketData.count} tickets loaded");
     }
 
     private void UpdatePeaceSignDisplay(ServerAPIClient.ServerListResponse serverData)
     {
-        // Example: Display server information on the peace sign cube
+        // Set cube to GREEN on successful API call
+        SetCubeColor(peaceSignTarget, Color.green);
 
-        if (peaceSignTarget != null)
-        {
-            var renderer = peaceSignTarget.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                // Change color based on server count
-                float intensity = Mathf.Clamp01(serverData.count / 5f);
-                renderer.material.color = new Color(0f, intensity, 1f - intensity);
-            }
-        }
+        Debug.Log($"[GestureToggle] Peace sign cube set to GREEN - {serverData.count} servers loaded");
     }
 
     /// <summary>
@@ -400,18 +371,10 @@ public class GestureToggle : MonoBehaviour
     /// </summary>
     private void UpdatePeaceSignDisplayWithServer(ServerAPIClient.Server server)
     {
-        if (peaceSignTarget != null)
-        {
-            var renderer = peaceSignTarget.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                // Color coding: Green for active server
-                renderer.material.color = new Color(0f, 1f, 0.5f);
-            }
+        // Set cube to GREEN on successful server fetch
+        SetCubeColor(peaceSignTarget, Color.green);
 
-            // TODO: Update text display with server details
-            // Example: Show server name, location, status on a UI panel
-        }
+        Debug.Log($"[GestureToggle] Peace sign cube set to GREEN - Server {server.id} loaded");
     }
 
     /// <summary>
@@ -419,27 +382,24 @@ public class GestureToggle : MonoBehaviour
     /// </summary>
     private void UpdatePeaceSignDisplayWithTickets(ServerAPIClient.JiraTicketListResponse ticketData)
     {
-        if (peaceSignTarget != null)
-        {
-            var renderer = peaceSignTarget.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                // Color based on ticket count: More tickets = more urgent (red)
-                if (ticketData.count == 0)
-                {
-                    renderer.material.color = new Color(0f, 1f, 0f); // Green - no issues
-                }
-                else if (ticketData.count <= 2)
-                {
-                    renderer.material.color = new Color(1f, 1f, 0f); // Yellow - some issues
-                }
-                else
-                {
-                    renderer.material.color = new Color(1f, 0f, 0f); // Red - many issues
-                }
-            }
+        // Cube is already green from server fetch
+        // Could add additional visual feedback based on ticket count
 
-            // TODO: Display ticket list in UI panel
+        Debug.Log($"[GestureToggle] Tickets loaded for server - Count: {ticketData.count}");
+    }
+
+    /// <summary>
+    /// Helper method to set cube color
+    /// </summary>
+    private void SetCubeColor(GameObject target, Color color)
+    {
+        if (target == null)
+            return;
+
+        var renderer = target.GetComponent<Renderer>();
+        if (renderer != null && renderer.material != null)
+        {
+            renderer.material.color = color;
         }
     }
 }

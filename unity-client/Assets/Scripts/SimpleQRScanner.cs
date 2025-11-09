@@ -86,7 +86,10 @@ public class SimpleQRScanner : MonoBehaviour
             return;
 
         // Testing controls - cycle through servers (simulates looking at different servers)
+        // Only in Unity Editor, not in builds
+#if UNITY_EDITOR
         HandleTestingControls();
+#endif
     }
 
     private void HandleTestingControls()
@@ -166,10 +169,10 @@ public class SimpleQRScanner : MonoBehaviour
 
         if (debugMode)
         {
-            Debug.Log("═══════════════════════════════════════════════════");
-            Debug.Log("<color=yellow>[SimpleQRScanner] SCANNER ACTIVATED ✌️</color>");
-            Debug.Log($"Looking at: {(testServerIds.Length > 0 ? testServerIds[selectedServerIndex] : "none")}");
-            Debug.Log("═══════════════════════════════════════════════════");
+            // Debug.Log("═══════════════════════════════════════════════════");
+            // Debug.Log("<color=yellow>[SimpleQRScanner] SCANNER ACTIVATED ✌️</color>");
+            // Debug.Log($"Looking at: {(testServerIds.Length > 0 ? testServerIds[selectedServerIndex] : "none")}");
+            // Debug.Log("═══════════════════════════════════════════════════");
         }
 
         // Auto-scan immediately when activated (simulates instant camera scan)
